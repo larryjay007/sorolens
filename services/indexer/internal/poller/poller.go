@@ -158,7 +158,15 @@ func (p *Poller) processAll(ctx context.Context) error {
 			if c.Status != "active" && c.Status != "backfilling" {
 				continue
 			}
-			if err := p.processContract(ctx, c); err != nil {
+			// Once a contract's batch starts, let it run to completion and
+			// commit its cursor even if ctx is cancelled mid-flight (SIGTERM,
+			// or the once-mode max-duration timeout): only the decision to
+			// start the *next* contract's batch respects cancellation, via
+			// the ctx.Err() check above. Without this, a shutdown signal
+			// arriving mid-fetch would abort the in-flight RPC/store calls
+			// and lose that contract's progress for the pass instead of
+			// finishing it cleanly.
+			if err := p.processContract(context.WithoutCancel(ctx), c); err != nil {
 				// Log and continue; one failing contract must not block others.
 				p.log.Error("failed to index contract",
 					"contract_id", c.ID,

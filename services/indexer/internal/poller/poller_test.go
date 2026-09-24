@@ -26,6 +26,10 @@ type fakeRPC struct {
 	ledgerEntries map[string]LedgerEntry // key: base64 LedgerKey
 	txErr         error
 	eventsCalls   []getEventsCall
+	// onGetEvents, if set, runs once GetEvents is called, before it
+	// returns. Tests use this to simulate a shutdown signal arriving
+	// while a contract's batch is already mid-fetch.
+	onGetEvents func()
 }
 
 type getEventsCall struct {
@@ -48,12 +52,20 @@ func (f *fakeRPC) GetLatestLedger(ctx context.Context) (*LatestLedger, error) {
 
 func (f *fakeRPC) GetEvents(_ context.Context, start, end uint32, filters []EventFilter) (*GetEventsResult, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.eventsCalls = append(f.eventsCalls, getEventsCall{start, end, filters})
 	key := ""
 	if len(filters) > 0 && len(filters[0].ContractIDs) > 0 {
 		key = filters[0].ContractIDs[0]
 	}
+	onGetEvents := f.onGetEvents
+	f.mu.Unlock()
+
+	if onGetEvents != nil {
+		onGetEvents()
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if r, ok := f.events[key]; ok {
 		return r, nil
 	}
@@ -509,6 +521,93 @@ func TestPoller_ContinuousMode_shutsDownOnCancel(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Error("timed out waiting for continuous mode to shut down")
+	}
+}
+
+// cursorCtxCapturingStore wraps fakeStore to record the context observed by
+// UpsertSyncState at call time, so a test can tell whether the cursor commit
+// ran on a context that had already been cancelled.
+type cursorCtxCapturingStore struct {
+	*fakeStore
+	upsertCalled bool
+	upsertCtxErr error
+}
+
+func (s *cursorCtxCapturingStore) UpsertSyncState(ctx context.Context, state SyncState) error {
+	s.upsertCalled = true
+	s.upsertCtxErr = ctx.Err()
+	return s.fakeStore.UpsertSyncState(ctx, state)
+}
+
+// TestPoller_SIGTERM_finishesInFlightBatchAndCommitsCursor simulates a
+// shutdown signal (SIGTERM, modeled here as ctx cancellation, matching
+// main.go's signal.NotifyContext) arriving while a contract's batch is
+// already mid-fetch. It must finish that batch and commit its cursor rather
+// than aborting it, per issue #203: "On SIGTERM, finish the current batch,
+// commit the cursor, then exit."
+func TestPoller_SIGTERM_finishesInFlightBatchAndCommitsCursor(t *testing.T) {
+	t.Parallel()
+
+	contractID := "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+	inner := newFakeStore([]Contract{{ID: contractID, Status: "active"}})
+	inner.syncStates[contractID] = SyncState{ContractID: contractID, LastLedger: 499000}
+	store := &cursorCtxCapturingStore{fakeStore: inner}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	rpc := &fakeRPC{
+		latestLedger: &LatestLedger{Sequence: 500000},
+		events: map[string]*GetEventsResult{
+			contractID: {
+				Events: []RPCEvent{
+					{
+						ID:                       "0001-0001",
+						ContractID:               contractID,
+						Ledger:                   499100,
+						LedgerClosedAt:           "2026-07-26T10:00:00Z",
+						TxHash:                   "abc123",
+						Type:                     "contract",
+						Topic:                    []string{"AAAA"},
+						Value:                    "BBBB",
+						InSuccessfulContractCall: true,
+					},
+				},
+				LatestLedger: 500000,
+			},
+		},
+		transactions: map[string]*TransactionResult{
+			"abc123": {Status: "SUCCESS", Ledger: 499100},
+		},
+	}
+	// Simulate SIGTERM landing mid-fetch, once the batch for CDLZ... has
+	// already started (GetEvents is the RPC call inside processContract).
+	rpc.onGetEvents = func() { cancel() }
+
+	p := New(rpc, store, newFakeRedis(), testConfig(), testLogger())
+
+	done := make(chan error, 1)
+	go func() { done <- p.Run(ctx, "once") }()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for run to finish the in-flight batch")
+	}
+
+	if !store.upsertCalled {
+		t.Fatal("expected the cursor to be committed for the in-flight contract despite SIGTERM arriving mid-batch")
+	}
+	if store.upsertCtxErr != nil {
+		t.Errorf("cursor commit observed a cancelled context (%v); the in-flight batch must finish on a context detached from shutdown", store.upsertCtxErr)
+	}
+	if got := store.syncStates[contractID].LastLedger; got != 500000 {
+		t.Errorf("sync state LastLedger: want 500000, got %d", got)
+	}
+	if len(store.events) != 1 {
+		t.Errorf("events: want 1, got %d (the in-flight batch's inserts must also complete)", len(store.events))
 	}
 }
 
