@@ -10,8 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/exaring/otelpgx"
+	"github.com/getsentry/sentry-go"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/sorolens/sorolens/apps/api/internal/config"
 	"github.com/sorolens/sorolens/apps/api/internal/handler"
@@ -30,10 +31,21 @@ func main() {
 		os.Exit(1)
 	}
 
+	if cfg.SentryDSN != "" {
+		if err := sentry.Init(sentry.ClientOptions{
+			Dsn:         cfg.SentryDSN,
+			Environment: cfg.SentryEnvironment,
+		}); err != nil {
+			logger.Error("sentry init", "err", err)
+		} else {
+			defer sentry.Flush(2 * time.Second)
+		}
+	}
+
 	config, err := pgxpool.ParseConfig(cfg.DatabaseURL)
 	if err != nil {
 		logger.Error("parse config", "err", err)
-	os.Exit(1)
+		os.Exit(1)
 	}
 	config.ConnConfig.Tracer = otelpgx.NewTracer()
 	pool, err := pgxpool.NewWithConfig(context.Background(), config)

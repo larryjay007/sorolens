@@ -18,6 +18,9 @@ func New(h *handler.Handler) http.Handler {
 
 	r.Use(middleware.RequestID)
 	r.Use(middleware.CORS)
+	// Sentry must run before Recoverer: it reports a panic and re-panics so
+	// Recoverer still produces the standard 500 response.
+	r.Use(middleware.Sentry)
 	r.Use(middleware.Recoverer(h.Logger))
 	r.Use(middleware.Logger(h.Logger))
 	r.Use(chiMiddleware.StripSlashes)
@@ -66,7 +69,6 @@ func New(h *handler.Handler) http.Handler {
 		get("/contracts/{id}/stream", h.StreamEvents)
 		get("/contracts/{id}/graph", h.ContractGraph)
 		get("/stream/events", h.StreamEventsSSE)
-
 
 		// API keys (admin scope + admin role).
 		r.With(scope, admin).Get("/api-keys", h.ListAPIKeys)

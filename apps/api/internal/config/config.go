@@ -8,7 +8,10 @@
 // Required: DATABASE_URL, REDIS_URL.
 // Optional with defaults: SOROBAN_RPC_URL (testnet), STELLAR_NETWORK (testnet),
 // PORT (8080), LOG_LEVEL (info), INDEXER_POLL_INTERVAL (5m),
-// INDEXER_LEDGER_WINDOW (120960 ledgers ≈ 7 days), INDEXER_MAX_DURATION (270s).
+// INDEXER_LEDGER_WINDOW (120960 ledgers ≈ 7 days), INDEXER_MAX_DURATION (270s),
+// SENTRY_ENVIRONMENT (production).
+// Optional with no default: SENTRY_DSN. Error reporting is disabled entirely
+// when it is unset.
 //
 // Load collects every missing required variable into a single error message
 // so the process fails fast with actionable output.
@@ -48,6 +51,11 @@ type Config struct {
 	// startup. The user is keyed by this value as both its ID and GitHub ID so
 	// requests authenticated with X-User-ID or X-GitHub-ID resolve to it.
 	InitialAdminGitHubID string
+	// SentryDSN is the Sentry project DSN. Error reporting is disabled
+	// entirely when this is empty.
+	SentryDSN string
+	// SentryEnvironment tags reported events (e.g. production, staging).
+	SentryEnvironment string
 }
 
 // Load reads configuration from environment variables and returns an error
@@ -63,6 +71,8 @@ func Load() (*Config, error) {
 		Port:                 getEnvDefault("PORT", "8080"),
 		LogLevel:             getEnvDefault("LOG_LEVEL", "info"),
 		InitialAdminGitHubID: os.Getenv("INITIAL_ADMIN_GITHUB_ID"),
+		SentryDSN:            os.Getenv("SENTRY_DSN"),
+		SentryEnvironment:    getEnvDefault("SENTRY_ENVIRONMENT", "production"),
 	}
 
 	pollStr := getEnvDefault("INDEXER_POLL_INTERVAL", "5m")

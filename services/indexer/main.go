@@ -12,11 +12,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/sorolens/sorolens/services/indexer/internal/poller"
 	"github.com/sorolens/sorolens/services/indexer/internal/watchdog"
 )
 
 func main() {
+	defer reportPanic()
+
 	tp, _ := poller.InitTracer()
 	if tp != nil {
 		defer tp.Shutdown(context.Background())
@@ -31,6 +34,20 @@ func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
+
+	// Error reporting is disabled entirely when SENTRY_DSN is unset:
+	// sentry-go falls back to a no-op transport, so reportPanic below still
+	// runs safely but delivers nothing.
+	if dsn := os.Getenv("SENTRY_DSN"); dsn != "" {
+		if err := sentry.Init(sentry.ClientOptions{
+			Dsn:         dsn,
+			Environment: envString("SENTRY_ENVIRONMENT", "production"),
+		}); err != nil {
+			log.Error("sentry init", "err", err)
+		} else {
+			defer sentry.Flush(2 * time.Second)
+		}
+	}
 
 	cfg := poller.Config{
 		LedgerWindow:         uint32(*ledgerWindow),
@@ -87,6 +104,8 @@ func main() {
 
 	// Start nightly performance job
 	go func() {
+		defer reportPanic()
+
 		type perfStore interface {
 			ComputeAndStoreBaselines(ctx context.Context, snapshotDate time.Time) error
 			CheckAndEmitRegressions(ctx context.Context, snapshotDate time.Time) (int, error)
@@ -270,7 +289,7 @@ func (s *stubStore) CreateMonthlyPartitionIfNotExists(_ context.Context, _ int, 
 	return nil
 }
 func (s *stubStore) GetIndexerCursor(_ context.Context, _ string) (uint32, error) { return 0, nil }
-func (s *stubStore) SetIndexerCursor(_ context.Context, _ string, _ uint32) error  { return nil }
+func (s *stubStore) SetIndexerCursor(_ context.Context, _ string, _ uint32) error { return nil }
 func (s *stubStore) BatchInsertWithCursor(_ context.Context, _ string, _ uint32, _ []poller.Event, _ []poller.Invocation, _ poller.SyncState) error {
 	return nil
 }
@@ -297,6 +316,27 @@ func (r *stubRedis) SetNX(ctx context.Context, key, value string, ttl time.Durat
 	return true, nil
 }
 func (r *stubRedis) Del(ctx context.Context, key string) error { return nil }
+
+// reportPanic reports a recovered panic to Sentry (a no-op when Sentry was
+// not initialized), flushes, then re-panics so the process still crashes and
+// exits with the same non-zero status it always has. Every goroutine that
+// can panic needs its own deferred call: recover only ever catches a panic
+// on the same goroutine's call stack.
+func reportPanic() {
+	if err := recover(); err != nil {
+		sentry.CurrentHub().Recover(err)
+		sentry.Flush(2 * time.Second)
+		panic(err)
+	}
+}
+
+// envString reads a string env var with a default.
+func envString(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
 
 // envBool reads a boolean env var with a default.
 func envBool(key string, def bool) bool {
