@@ -28,6 +28,7 @@ type MockStore struct {
 	healthScores       map[string]ContractHealthScore
 	indexerCursors     map[string]uint32
 	contractVersions   map[string][]ContractVersion
+	alertGroups        []AlertGroup
 
 	// Error injection
 	UpsertContractErr           error
@@ -273,6 +274,9 @@ func (m *MockStore) ListInvocations(_ context.Context, contractID, cursor string
 			continue
 		}
 		if f.Network != "" && inv.Network != f.Network {
+			continue
+		}
+		if f.FunctionName != "" && inv.FunctionName != f.FunctionName {
 			continue
 		}
 		out = append(out, inv)
