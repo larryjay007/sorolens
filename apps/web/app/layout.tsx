@@ -32,6 +32,21 @@ export const metadata: Metadata = {
     description:
       "Indexed observability for Soroban smart contracts — events, invocations, storage, and anomaly detection on Stellar.",
     url: "https://sorolens.dev",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Sorolens real-time Soroban contract monitoring dashboard",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Sorolens — Indexed Observability for Soroban",
+    description:
+      "Indexed observability for Soroban smart contracts — events, invocations, storage, and anomaly detection on Stellar.",
+    images: ["/og-image.png"],
   },
   alternates: {
     canonical: "https://sorolens.dev",

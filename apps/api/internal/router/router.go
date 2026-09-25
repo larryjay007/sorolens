@@ -141,12 +141,16 @@ func New(h *handler.Handler, maxBodyBytes int64) http.Handler {
 		get("/contracts/{id}/stats", h.ContractStats)
 		get("/contracts/{id}/forecast", h.ContractForecast)
 		get("/contracts/{id}/snapshot", h.ContractSnapshot)
+		get("/contracts/{id}/snapshot.json", h.ContractSnapshotExport)
 		get("/contracts/{id}/upgrades", h.ListContractUpgrades)
 		get("/contracts/{id}/health-score", h.GetContractHealthScore)
 		get("/contracts/{id}/summary", h.ContractSummary)
 		get("/contracts/{id}/stream", h.StreamEvents)
 		get("/contracts/{id}/graph", h.ContractGraph)
 		get("/stream/events", h.StreamEventsSSE)
+		// Dead-letter queue for events that failed processing (issue #202).
+		get("/dlq", h.ListFailedEvents)
+		r.With(scope, contributor).Post("/dlq/{id}/requeue", h.RequeueFailedEvent)
 
 		// API keys (admin scope + admin role).
 		r.With(scope, admin).Get("/api-keys", h.ListAPIKeys)
