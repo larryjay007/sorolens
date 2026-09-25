@@ -13,6 +13,13 @@ import { NetworkProvider } from "@/lib/network";
 import { NetworkSelector } from "@/components/NetworkSelector";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { CmdkSearch } from "@/components/CmdkSearch";
+import { OfflineBanner } from "@/components/OfflineAlert";
+import { PushSubscribeButton } from "@/components/PushSubscribeButton";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { useOfflineAlertQueue } from "@/hooks/useOfflineAlertQueue";
+
+function AppLayoutInner({ children }: { children: React.ReactNode }) {
+  const { pending, isOffline } = useOfflineAlertQueue();
 
   return (
     <>

@@ -133,7 +133,7 @@ func TestRenderReportCSVEscapesContractIDThatLooksNumeric(t *testing.T) {
 }
 
 func TestRenderReportPDFHasValidStructure(t *testing.T) {
-	body, err := renderReportPDF(sampleReport(), "deadbeef")
+	body, err := renderReportPDF(sampleReport(), strings.Repeat("deadbeef", 8))
 	if err != nil {
 		t.Fatalf("renderReportPDF: %v", err)
 	}
@@ -266,11 +266,16 @@ func TestRenderSLABadgeColourThresholds(t *testing.T) {
 func TestRenderSLABadgeIsWellFormedXML(t *testing.T) {
 	svg := renderSLABadge(sampleReport())
 	// A cheap well-formedness check: tags are balanced for the elements used.
+	// A tag counts as self-closing only when it ends in "/>", not merely
+	// because it carries attributes (an open tag like <svg xmlns="..."> has
+	// both a space and a matching </svg>, so it must not be mistaken for one).
 	for _, tag := range []string{"svg", "g", "title"} {
-		open := strings.Count(svg, "<"+tag)
+		openTag := regexp.MustCompile(`<` + tag + `(\s[^>]*)?>`)
+		selfClosingTag := regexp.MustCompile(`<` + tag + `(\s[^>]*)?/>`)
+		selfClosed := len(selfClosingTag.FindAllString(svg, -1))
+		open := len(openTag.FindAllString(svg, -1)) - selfClosed
 		close := strings.Count(svg, "</"+tag+">")
-		selfClosed := strings.Count(svg, "<"+tag+" ")
-		if open-selfClosed != close {
+		if open != close {
 			t.Fatalf("unbalanced <%s>: %d open, %d close (self-closing %d)\n%s",
 				tag, open, close, selfClosed, svg)
 		}
@@ -279,7 +284,7 @@ func TestRenderSLABadgeIsWellFormedXML(t *testing.T) {
 
 func TestReportFilenameIsSanitised(t *testing.T) {
 	got := reportFilename("CABCDEFGHIJKLMNOPQRSTUVWXYZ234567", "2026-02", "pdf")
-	if got != "sorolens-sla-CABCDEFGHIJ-2026-02.pdf" {
+	if got != "sorolens-sla-CABCDEFGHIJK-2026-02.pdf" {
 		t.Fatalf("filename = %q", got)
 	}
 }
