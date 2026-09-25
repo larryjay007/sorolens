@@ -262,17 +262,6 @@ const COLUMNS: Column<ContractRow>[] = [
     ),
   },
   {
-    key: "label",
-    header: "Alias",
-    sortable: true,
-    accessor: (c) =>
-      c.label ? (
-        <span className="text-[var(--color-text-primary)]">{c.label}</span>
-      ) : (
-        <span className="text-[var(--color-text-secondary)]">--</span>
-      ),
-  },
-  {
     key: "network",
     header: "Network",
     sortable: true,
