@@ -15,7 +15,7 @@ import (
 
 // New builds and returns the HTTP router with all middleware and routes wired.
 // maxBodyBytes caps the request body size in bytes; values of zero or less
-// disable the limit. Callers normally pass cfg.RequestMaxBodyBytes.
+// disable the limit. Callers normally pass config.MaxBodyBytesFromEnv().
 func New(h *handler.Handler, maxBodyBytes int64) http.Handler {
 	r := chi.NewRouter()
 

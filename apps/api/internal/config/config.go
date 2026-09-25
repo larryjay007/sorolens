@@ -66,9 +66,6 @@ type Config struct {
 	// SlackSigningSecret verifies Slack slash command requests
 	// (SLACK_SIGNING_SECRET). Empty disables the Slack command endpoint.
 	SlackSigningSecret string
-	// RequestMaxBodyBytes caps the size of incoming request bodies
-	// (REQUEST_MAX_BODY_BYTES, default 1 MiB).
-	RequestMaxBodyBytes int64
 }
 
 // Load reads configuration from environment variables and returns an error
@@ -116,12 +113,6 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("API_CACHE_TTL: invalid duration %q", cacheTTLStr)
 	}
 	cfg.CacheTTL = cacheTTL
-
-	maxBodyBytes, err := MaxBodyBytesFromEnv()
-	if err != nil {
-		return nil, err
-	}
-	cfg.RequestMaxBodyBytes = maxBodyBytes
 
 	var missing []string
 	if cfg.DatabaseURL == "" {
