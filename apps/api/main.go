@@ -16,6 +16,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/sorolens/sorolens/apps/api/internal/config"
 	"github.com/sorolens/sorolens/apps/api/internal/handler"
+	"github.com/sorolens/sorolens/apps/api/internal/middleware"
 	"github.com/sorolens/sorolens/apps/api/internal/router"
 	"github.com/sorolens/sorolens/apps/api/internal/store"
 )
@@ -69,6 +70,10 @@ func main() {
 		Redis:       &redisPinger{client: redisClient},
 		RedisClient: &realRedisClient{client: redisClient},
 		Logger:      logger,
+
+		Cache:              &middleware.RedisCache{Client: redisClient},
+		CacheTTL:           cfg.CacheTTL,
+		SlackSigningSecret: cfg.SlackSigningSecret,
 	}
 
 	if err := seedInitialAdmin(context.Background(), h.Store, cfg.InitialAdminGitHubID, logger); err != nil {

@@ -56,6 +56,12 @@ type Config struct {
 	SentryDSN string
 	// SentryEnvironment tags reported events (e.g. production, staging).
 	SentryEnvironment string
+	// CacheTTL is the lifetime of cached GET responses (API_CACHE_TTL,
+	// default 30s). Zero disables the response cache.
+	CacheTTL time.Duration
+	// SlackSigningSecret verifies Slack slash command requests
+	// (SLACK_SIGNING_SECRET). Empty disables the Slack command endpoint.
+	SlackSigningSecret string
 }
 
 // Load reads configuration from environment variables and returns an error
@@ -73,6 +79,7 @@ func Load() (*Config, error) {
 		InitialAdminGitHubID: os.Getenv("INITIAL_ADMIN_GITHUB_ID"),
 		SentryDSN:            os.Getenv("SENTRY_DSN"),
 		SentryEnvironment:    getEnvDefault("SENTRY_ENVIRONMENT", "production"),
+		SlackSigningSecret:   os.Getenv("SLACK_SIGNING_SECRET"),
 	}
 
 	pollStr := getEnvDefault("INDEXER_POLL_INTERVAL", "5m")
@@ -95,6 +102,13 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("INDEXER_MAX_DURATION: invalid duration %q: %w", maxDurStr, err)
 	}
 	cfg.IndexerMaxDuration = maxDur
+
+	cacheTTLStr := getEnvDefault("API_CACHE_TTL", "30s")
+	cacheTTL, err := time.ParseDuration(cacheTTLStr)
+	if err != nil || cacheTTL < 0 {
+		return nil, fmt.Errorf("API_CACHE_TTL: invalid duration %q", cacheTTLStr)
+	}
+	cfg.CacheTTL = cacheTTL
 
 	var missing []string
 	if cfg.DatabaseURL == "" {
